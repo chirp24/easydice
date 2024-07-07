@@ -8,4 +8,4 @@ Now, when you type ```:roll``` or ```:close```, those five dice will do it in or
 
 The extension is limited to sending packets every 500ms. This extension only serves the purpose of making your rolls/resets cleaner, and saving you the hassle of doing it for those hard to click dice.
 
-![](https://github.com/chirp24/fastbuy/blob/main/Animation1.gif)
+![](https://github.com/chirp24/easydice/blob/main/dicescript1.gif)
