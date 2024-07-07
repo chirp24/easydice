@@ -7,7 +7,6 @@ import (
 	"time"
 
 	g "xabbo.b7c.io/goearth"
-	"xabbo.b7c.io/goearth/shockwave/in"
 	"xabbo.b7c.io/goearth/shockwave/out"
 )
 
@@ -39,7 +38,7 @@ func main() {
 	ext.Initialized(onInitialized)
 	ext.Connected(onConnected)
 	ext.Disconnected(onDisconnected)
-	ext.Intercept(in.CHAT, in.CHAT_2, in.CHAT_3).With(handleChat)
+	ext.Intercept(out.CHAT, out.SHOUT, out.WHISPER).With(handleChat)
 	ext.Intercept(out.THROW_DICE).With(handleThrowDice)
 	ext.Intercept(out.DICE_OFF).With(handleDiceOff)
 
@@ -65,7 +64,6 @@ func onDisconnected() {
 }
 
 func handleChat(e *g.Intercept) {
-	e.Packet.ReadInt() // skip entity index
 	msg := e.Packet.ReadString()
 	if strings.Contains(msg, ":close") { // :close msg
 		e.Block()
