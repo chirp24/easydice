@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,12 +22,13 @@ var ext = g.NewExt(g.ExtInfo{
 })
 
 var (
-	setup          bool
-	setupMutex     sync.Mutex
-	diceIDs        []int
-	diceValues     map[int]int
-	throwChannel   chan *g.Packet
-	diceOffChannel chan *g.Packet
+	setup           bool
+	setupMutex      sync.Mutex
+	diceIDs         []int
+	diceValues      map[int]int
+	throwChannel    chan *g.Packet
+	diceOffChannel  chan *g.Packet
+	disableMessages bool // Flag to disable client-side messages
 )
 
 func main() {
@@ -86,28 +88,17 @@ func handleChat(e *g.Intercept) {
 		e.Block()
 		log.Println(msg)
 		go rollSpecificDice([]int{0, 2, 4}) // Roll 1st, 3rd, and 5th dice IDs
+	} else if strings.Contains(msg, ":disablemsg") { // :disablemsg msg
+		e.Block()
+		log.Println(msg)
+		ext.Send(in.CHAT, 0, "> > Poker messages disabled. < <", 0, 34, 0, 0)
+		disableMessages = true
+	} else if strings.Contains(msg, ":enablemsg") { // :enablemsg msg
+		e.Block()
+		log.Println(msg)
+		ext.Send(in.CHAT, 0, "> > Poker messages enabled. < <", 0, 34, 0, 0)
+		disableMessages = true
 	}
-}
-
-func rollSpecificDice(ids []int) {
-	done := make(chan struct{})
-
-	for _, id := range ids {
-		go func(diceID int) {
-			packet := fmt.Sprintf("%d", diceID)      // Construct dice roll packet
-			ext.Send(out.THROW_DICE, []byte(packet)) // Send the packet
-			log.Printf("Sent dice roll packet for ID: %d\n", diceID)
-			done <- struct{}{}
-		}(diceIDs[id])
-
-		time.Sleep(550 * time.Millisecond)
-	}
-
-	for range ids {
-		<-done
-	}
-
-	log.Println("All specific dice roll packets sent")
 }
 
 func resetPackets() {
@@ -180,7 +171,7 @@ func closeDice() {
 			done <- struct{}{}
 		}(id)
 
-		time.Sleep(550 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	for range diceIDs {
@@ -201,7 +192,7 @@ func rollDice() {
 			done <- struct{}{}
 		}(id)
 
-		time.Sleep(5 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	for range diceIDs {
@@ -211,25 +202,26 @@ func rollDice() {
 	log.Println("All dice roll packets sent")
 }
 
-//func parseDiceValuePacket(packet *g.Packet) (int, int, error) {
-//	packetString := string(packet.Data) // Convert packet data to string
-//	parts := strings.Fields(packetString)
-//	if len(parts) < 2 {
-//		return 0, 0, fmt.Errorf("packet format incorrect")
-//	}
-//
-//	diceID, err := strconv.Atoi(parts[0])
-//	if err != nil {
-//		return 0, 0, fmt.Errorf("error parsing dice ID: %v", err)
-//	}
-//
-//	obfuscatedValue, err := strconv.Atoi(parts[1])
-//	if err != nil {
-//		return 0, 0, fmt.Errorf("error parsing obfuscated value: %v", err)
-//	}
-//
-//	return diceID, obfuscatedValue, nil
-//}
+func rollSpecificDice(indices []int) {
+	done := make(chan struct{})
+
+	for _, idx := range indices {
+		go func(diceID int) {
+			packet := fmt.Sprintf("%d", diceIDs[diceID]) // Construct dice roll packet
+			ext.Send(out.THROW_DICE, []byte(packet))     // Send the packet
+			log.Printf("Sent dice roll packet for ID: %d\n", diceIDs[diceID])
+			done <- struct{}{}
+		}(idx)
+
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	for range indices {
+		<-done
+	}
+
+	log.Println("Specific dice roll packets sent")
+}
 
 func handleDiceResults(e *g.Intercept) {
 	packetString := string(e.Packet.Data)
@@ -263,10 +255,12 @@ func handleDiceResults(e *g.Intercept) {
 	}
 
 	// Check if we have all dice values now
-	if len(diceValues) == 5 {
+	if len(diceValues) == 5 && !disableMessages {
 		message := evaluateDiceValues(diceValues)
-		ext.Send(in.CHAT, 0, message, 0, 34, 0, 0) // Sending the result as a chat message
-		diceValues = make(map[int]int)             // Reset for next roll
+		if message != "" {
+			ext.Send(in.CHAT, 0, message, 0, 34, 0, 0) // Sending the result as a chat message
+		}
+		diceValues = make(map[int]int) // Reset for next roll
 	}
 }
 
@@ -278,34 +272,18 @@ func evaluateDiceValues(diceValues map[int]int) string {
 		}
 	}
 
-	// Check for a straight (1,2,3,4,5 or 2,3,4,5,6)
-	straightValues1 := []int{1, 2, 3, 4, 5}
-	straightValues2 := []int{2, 3, 4, 5, 6}
-
-	straight1 := true
-	straight2 := true
-
-	// Check if all required values are present in diceValues
-	for _, value := range straightValues1 {
-		if _, ok := diceValues[value]; !ok {
-			straight1 = false
-			break
-		}
+	// Check for straight
+	sorted := make([]int, 0, 5)
+	for _, v := range diceValues {
+		sorted = append(sorted, v)
 	}
+	sort.Ints(sorted)
 
-	for _, value := range straightValues2 {
-		if _, ok := diceValues[value]; !ok {
-			straight2 = false
-			break
-		}
-	}
-
-	// If straight is true for either pattern, return the appropriate message
-	if straight1 || straight2 {
+	if sorted[4]-sorted[0] == 4 || (sorted[0] == 1 && sorted[1] == 2 && sorted[2] == 3 && sorted[3] == 4 && sorted[4] == 5) {
 		return "Straight! (this message is only seen by you!)"
 	}
 
-	// Check for other hands based on counts
+	// Check for poker hands
 	var counts = make(map[int]int)
 	for _, value := range diceValues {
 		counts[value]++
