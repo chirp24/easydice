@@ -10,6 +10,6 @@ Now, when you type ```:roll``` or ```:close```, those five dice will do it in or
 
 You may also use the command ```:tri``` to roll 3 dice in a triangle instead of all 5.
 
-The extension is limited to sending packets every 500ms. This extension only serves the purpose of making your rolls/resets cleaner, and saving you the hassle of doing it for those hard to click dice.
+The extension is limited to sending packets every 550ms.
 
 ![](https://github.com/chirp24/easydice/blob/main/dicescript1.gif)
