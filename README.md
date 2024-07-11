@@ -6,7 +6,7 @@ Roll/Reset your dice with a simple command. [GoEarth](https://github.com/xabbo/g
 Type ```:setup``` to assign your dice, or reset currently saved dice. After using ```:setup```, roll/close the dice you want to save, in order.
 Now, when you type ```:roll``` or ```:close```, those five dice will do it in order you chose.
 
-```POKER``` results are auto-calculated by default, and send in a client side message. Other players cannot see these messages.
+```POKER``` results are auto-calculated by default, and sent in a client side message. Other players cannot see these messages.
 
 You may also use the command ```:tri``` to roll 3 dice in a triangle instead of all 5.
 
