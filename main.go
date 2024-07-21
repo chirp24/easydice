@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +20,7 @@ var ext = g.NewExt(g.ExtInfo{
 	Title:       "easydice",
 	Description: "An extension to roll/reset dice for you.",
 	Author:      "chirp24",
-	Version:     "1.5",
+	Version:     "1.7",
 })
 
 var (
@@ -29,6 +31,14 @@ var (
 	diceIDs     []Dice
 	diceIDMutex sync.Mutex
 )
+
+type TriDiceRoll struct {
+	PendingDice map[string]bool
+	Results     map[string]int
+}
+
+var triDiceRoll *TriDiceRoll
+var triDiceMutex sync.Mutex
 
 // Dice is a wrapper for sorting dice by their X-coordinate and including their position
 type Dice struct {
@@ -42,6 +52,7 @@ func main() {
 	ext.Connected(onConnected)
 	ext.Disconnected(onDisconnected)
 	ext.Intercept(out.CHAT, out.SHOUT).With(handleChat)
+	ext.Intercept(in.DICE_VALUE).With(handleDiceValue)
 
 	ext.Run()
 }
@@ -68,14 +79,14 @@ func showMsg(msg string) {
 
 func handleChat(e *g.Intercept) {
 	msg := e.Packet.ReadString()
-	if strings.Contains(msg, ":close") { // :close msg
+	if strings.Contains(msg, ":close") {
 		e.Block()
 		// log.Println(msg)
 		setupMutex.Lock()
 		setup = false
 		setupMutex.Unlock()
 		go closeDice()
-	} else if strings.Contains(msg, ":setup") { // :setup msg
+	} else if strings.Contains(msg, ":setup") {
 		e.Block()
 		go showMsg("Setup mode enabled.")
 		// log.Println(msg)
@@ -83,14 +94,14 @@ func handleChat(e *g.Intercept) {
 		setup = true
 		setupMutex.Unlock()
 		go collectDice()
-	} else if strings.Contains(msg, ":roll") { // :roll msg
+	} else if strings.Contains(msg, ":roll") {
 		e.Block()
 		// log.Println(msg)
 		go rollDice()
-	} else if strings.Contains(msg, ":tri") { // :tri msg
+	} else if strings.Contains(msg, ":tri") {
 		e.Block()
 		// log.Println(msg)
-		go rollTriangle()
+		go rollTriDice()
 	}
 }
 
@@ -108,6 +119,101 @@ func filterDice(roomMgr *room.Manager, self *room.Entity) []room.Object {
 	return dice
 }
 
+func angleFromCenter(dice Dice, self *room.Entity, layout string) float64 {
+	dx := float64(dice.X - self.X)
+	dy := float64(dice.Y - self.Y)
+
+	switch layout {
+	case "bottom":
+		// No rotation needed
+		return math.Atan2(dy, dx)
+	case "top":
+		// Rotate 180 degrees
+		return math.Atan2(-dy, -dx)
+	case "left":
+		// Rotate 90 degrees counterclockwise
+		return math.Atan2(dy, dx)
+	case "right":
+		// Rotate 90 degrees clockwise
+		return math.Atan2(dx, -dy)
+	default:
+		// Default to no rotation
+		return math.Atan2(dy, dx)
+	}
+}
+
+func sortDice(diceList []Dice, self *room.Entity, layout string) {
+	sort.Slice(diceList, func(i, j int) bool {
+		return angleFromCenter(diceList[i], self, layout) < angleFromCenter(diceList[j], self, layout)
+	})
+}
+
+func detectLayout(diceList []Dice, self *room.Entity) string {
+	xSet := make(map[int]bool)
+	ySet := make(map[int]bool)
+
+	for _, die := range diceList {
+		xSet[die.X] = true
+		ySet[die.Y] = true
+	}
+
+	xCoords := make([]int, 0, len(xSet))
+	yCoords := make([]int, 0, len(ySet))
+	for x := range xSet {
+		xCoords = append(xCoords, x)
+	}
+	for y := range ySet {
+		yCoords = append(yCoords, y)
+	}
+	sort.Ints(xCoords)
+	sort.Ints(yCoords)
+
+	// log.Printf("Player coordinates: X=%d, Y=%d", self.X, self.Y)
+	// log.Printf("xCoords: %v, yCoords: %v", xCoords, yCoords)
+
+	if len(ySet) == 3 && len(xSet) == 2 && xSet[self.X] && xSet[self.X+1] {
+		if ySet[self.Y-1] && ySet[self.Y] && ySet[self.Y+1] {
+			return "bottom"
+		}
+	}
+
+	if len(ySet) == 3 && len(xSet) == 2 && xSet[self.X] && xSet[self.X-1] {
+		if ySet[self.Y-1] && ySet[self.Y] && ySet[self.Y+1] {
+			return "top"
+		}
+	}
+
+	if len(xSet) == 3 && len(ySet) == 2 && ySet[self.Y] && ySet[self.Y+1] {
+		if xSet[self.X-1] && xSet[self.X] && xSet[self.X+1] {
+			return "left"
+		}
+	}
+
+	if len(xSet) == 3 && len(ySet) == 2 && ySet[self.Y] && ySet[self.Y-1] {
+		if xSet[self.X-1] && xSet[self.X] && xSet[self.X+1] {
+			return "right"
+		}
+	}
+
+	return "unknown"
+}
+
+func sortDiceBottom(diceList []Dice, self *room.Entity) {
+	sortDice(diceList, self, "bottom")
+}
+
+func sortDiceTop(diceList []Dice, self *room.Entity) {
+	sortDice(diceList, self, "top")
+}
+
+func sortDiceLeft(diceList []Dice, self *room.Entity) {
+	sortDice(diceList, self, "left")
+}
+
+func sortDiceRight(diceList []Dice, self *room.Entity) {
+	sortDice(diceList, self, "right")
+}
+
 func collectDice() {
 	self := roomMgr.EntityByName(profileMgr.Name)
 	if self == nil {
@@ -120,23 +226,37 @@ func collectDice() {
 	dice := filterDice(roomMgr, self)
 	// log.Println("Filtered dice:", dice)
 
-	// Prepare for sorting
 	var diceList []Dice
 	for _, die := range dice {
 		diceList = append(diceList, Dice{ID: die.Id, X: die.X, Y: die.Y})
 	}
 
-	// Custom sorting: Clockwise starting from top-left
-	sort.Slice(diceList, func(i, j int) bool {
-		return angleFromCenter(diceList[i], self) < angleFromCenter(diceList[j], self)
-	})
+	layout := detectLayout(diceList, self)
+	// log.Printf("Detected layout: %s", layout)
+	if layout == "unknown" {
+		go showMsg("Unknown dice layout.")
+		return
+	}
 
-	// Update diceIDs with sorted dice, but only if setup mode is active
+	switch layout {
+	case "bottom":
+		sortDiceBottom(diceList, self)
+	case "top":
+		sortDiceTop(diceList, self)
+	case "left":
+		sortDiceLeft(diceList, self)
+	case "right":
+		sortDiceRight(diceList, self)
+	default:
+		// log.Println("Unknown layout detected.")
+		return
+	}
+
 	diceIDMutex.Lock()
 	defer diceIDMutex.Unlock()
 
 	if setup {
-		diceIDs = nil // Clear existing diceIDs if setup mode is reactivated
+		diceIDs = nil
 		for _, die := range diceList {
 			if len(diceIDs) < 5 {
 				diceIDs = append(diceIDs, die)
@@ -153,19 +273,31 @@ func collectDice() {
 	}
 }
 
-func angleFromCenter(dice Dice, self *room.Entity) float64 {
-	// Calculate the angle of the dice relative to the player
-	return math.Atan2(float64(dice.Y-self.Y), float64(dice.X-self.X))
-}
-
 func closeDice() {
 	diceIDMutex.Lock()
 	defer diceIDMutex.Unlock()
 
-	for _, dice := range diceIDs {
-		// log.Printf("Sending DICE_OFF for ID: %s (X: %d, Y: %d)", dice.ID, dice.X, dice.Y)
-		ext.Send(out.DICE_OFF, []byte(dice.ID))
+	for _, die := range diceIDs {
+		ext.Send(out.DICE_OFF, []byte(die.ID))
 		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+func rollTriDice() {
+	diceIDMutex.Lock()
+	defer diceIDMutex.Unlock()
+
+	if len(diceIDs) >= 5 {
+		triDiceRoll = &TriDiceRoll{
+			PendingDice: map[string]bool{},
+			Results:     map[string]int{},
+		}
+		triDice := []Dice{diceIDs[0], diceIDs[2], diceIDs[4]}
+		for _, die := range triDice {
+			triDiceRoll.PendingDice[die.ID] = true
+			ext.Send(out.THROW_DICE, []byte(die.ID))
+			time.Sleep(500 * time.Millisecond)
+		}
 	}
 }
 
@@ -173,41 +305,58 @@ func rollDice() {
 	diceIDMutex.Lock()
 	defer diceIDMutex.Unlock()
 
-	for _, dice := range diceIDs {
-		// log.Printf("Sending THROW_DICE for ID: %s (X: %d, Y: %d)", dice.ID, dice.X, dice.Y)
-		ext.Send(out.THROW_DICE, []byte(dice.ID))
+	for _, die := range diceIDs {
+		ext.Send(out.THROW_DICE, []byte(die.ID))
 		time.Sleep(500 * time.Millisecond)
 	}
 }
 
-func rollTriangle() {
-	diceIDMutex.Lock()
-	defer diceIDMutex.Unlock()
+func handleDiceValue(e *g.Intercept) {
+	packet := e.Packet
+	content := packet.ReadString()
+	parts := strings.Split(content, " ")
 
-	if len(diceIDs) < 3 {
-		// log.Println("Not enough dice to roll in triangle")
+	// log.Printf("Received DICE_VALUE packet: %s", content)
+
+	// Ignore packets with only one part (just the dice ID)
+	if len(parts) != 2 {
 		return
 	}
 
-	// Select every other die (1st, 3rd, and 5th in the sorted list)
-	triangleDice := []Dice{}
-	for i, dice := range diceIDs {
-		if i%2 == 0 { // Every other die
-			triangleDice = append(triangleDice, dice)
-		}
-		if len(triangleDice) == 3 {
-			break
-		}
-	}
-
-	if len(triangleDice) < 3 {
-		// log.Println("Not enough dice to roll in a triangle")
+	diceID := parts[0]
+	obfuscatedValue, err := strconv.Atoi(parts[1])
+	if err != nil {
+		// log.Printf("Error converting obfuscated value: %v", err)
 		return
 	}
 
-	for _, dice := range triangleDice {
-		// log.Printf("Sending THROW_DICE for ID: %s (X: %d, Y: %d)", dice.ID, dice.X, dice.Y)
-		ext.Send(out.THROW_DICE, []byte(dice.ID))
-		time.Sleep(500 * time.Millisecond)
+	trueValue := calculateTrueValue(diceID, obfuscatedValue)
+	// log.Printf("Dice ID: %s, Obfuscated Value: %d, True Value: %d", diceID, obfuscatedValue, trueValue)
+
+	triDiceMutex.Lock()
+	defer triDiceMutex.Unlock()
+
+	if triDiceRoll != nil && triDiceRoll.PendingDice[diceID] {
+		triDiceRoll.Results[diceID] = trueValue
+		delete(triDiceRoll.PendingDice, diceID)
+		if len(triDiceRoll.PendingDice) == 0 {
+			sum := 0
+			for _, value := range triDiceRoll.Results {
+				sum += value
+			}
+			// log.Printf("Sum of tri dice: %d", sum)
+			showMsg(fmt.Sprintf("Sum of tri dice: %d", sum))
+			triDiceRoll = nil
+		}
 	}
+}
+
+func calculateTrueValue(diceID string, obfuscatedValue int) int {
+	id, err := strconv.Atoi(diceID)
+	if err != nil {
+		// log.Printf("Error converting dice ID: %v", err)
+		return 0
+	}
+	trueValue := obfuscatedValue - (id * 38)
+	return trueValue
 }
