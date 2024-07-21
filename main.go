@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"math"
 	"sort"
 	"strings"
@@ -48,15 +47,15 @@ func main() {
 }
 
 func onInitialized(e g.InitArgs) {
-	log.Println("Extension initialized")
+	// log.Println("Extension initialized")
 }
 
 func onConnected(e g.ConnectArgs) {
-	log.Printf("Game connected (%s)\n", e.Host)
+	// log.Printf("Game connected (%s)\n", e.Host)
 }
 
 func onDisconnected() {
-	log.Println("Game disconnected")
+	// log.Println("Game disconnected")
 }
 
 func showMsg(msg string) {
@@ -71,7 +70,7 @@ func handleChat(e *g.Intercept) {
 	msg := e.Packet.ReadString()
 	if strings.Contains(msg, ":close") { // :close msg
 		e.Block()
-		log.Println(msg)
+		// log.Println(msg)
 		setupMutex.Lock()
 		setup = false
 		setupMutex.Unlock()
@@ -79,18 +78,18 @@ func handleChat(e *g.Intercept) {
 	} else if strings.Contains(msg, ":setup") { // :setup msg
 		e.Block()
 		go showMsg("Setup mode enabled.")
-		log.Println(msg)
+		// log.Println(msg)
 		setupMutex.Lock()
 		setup = true
 		setupMutex.Unlock()
 		go collectDice()
 	} else if strings.Contains(msg, ":roll") { // :roll msg
 		e.Block()
-		log.Println(msg)
+		// log.Println(msg)
 		go rollDice()
 	} else if strings.Contains(msg, ":tri") { // :tri msg
 		e.Block()
-		log.Println(msg)
+		// log.Println(msg)
 		go rollTriangle()
 	}
 }
@@ -112,14 +111,14 @@ func filterDice(roomMgr *room.Manager, self *room.Entity) []room.Object {
 func collectDice() {
 	self := roomMgr.EntityByName(profileMgr.Name)
 	if self == nil {
-		log.Println("self not found.")
+		// log.Println("self not found.")
 		return
 	}
 
-	log.Println("Starting dice collection")
+	// log.Println("Starting dice collection")
 
 	dice := filterDice(roomMgr, self)
-	log.Println("Filtered dice:", dice)
+	// log.Println("Filtered dice:", dice)
 
 	// Prepare for sorting
 	var diceList []Dice
@@ -141,7 +140,7 @@ func collectDice() {
 		for _, die := range diceList {
 			if len(diceIDs) < 5 {
 				diceIDs = append(diceIDs, die)
-				log.Printf("Collected dice ID: %s (X: %d, Y: %d)", die.ID, die.X, die.Y)
+				// log.Printf("Collected dice ID: %s (X: %d, Y: %d)", die.ID, die.X, die.Y)
 				if len(diceIDs) == 5 {
 					setupMutex.Lock()
 					setup = false
@@ -164,7 +163,7 @@ func closeDice() {
 	defer diceIDMutex.Unlock()
 
 	for _, dice := range diceIDs {
-		log.Printf("Sending DICE_OFF for ID: %s (X: %d, Y: %d)", dice.ID, dice.X, dice.Y)
+		// log.Printf("Sending DICE_OFF for ID: %s (X: %d, Y: %d)", dice.ID, dice.X, dice.Y)
 		ext.Send(out.DICE_OFF, []byte(dice.ID))
 		time.Sleep(500 * time.Millisecond)
 	}
@@ -175,7 +174,7 @@ func rollDice() {
 	defer diceIDMutex.Unlock()
 
 	for _, dice := range diceIDs {
-		log.Printf("Sending THROW_DICE for ID: %s (X: %d, Y: %d)", dice.ID, dice.X, dice.Y)
+		// log.Printf("Sending THROW_DICE for ID: %s (X: %d, Y: %d)", dice.ID, dice.X, dice.Y)
 		ext.Send(out.THROW_DICE, []byte(dice.ID))
 		time.Sleep(500 * time.Millisecond)
 	}
@@ -186,7 +185,7 @@ func rollTriangle() {
 	defer diceIDMutex.Unlock()
 
 	if len(diceIDs) < 3 {
-		log.Println("Not enough dice to roll in triangle")
+		// log.Println("Not enough dice to roll in triangle")
 		return
 	}
 
@@ -202,12 +201,12 @@ func rollTriangle() {
 	}
 
 	if len(triangleDice) < 3 {
-		log.Println("Not enough dice to roll in a triangle")
+		// log.Println("Not enough dice to roll in a triangle")
 		return
 	}
 
 	for _, dice := range triangleDice {
-		log.Printf("Sending THROW_DICE for ID: %s (X: %d, Y: %d)", dice.ID, dice.X, dice.Y)
+		// log.Printf("Sending THROW_DICE for ID: %s (X: %d, Y: %d)", dice.ID, dice.X, dice.Y)
 		ext.Send(out.THROW_DICE, []byte(dice.ID))
 		time.Sleep(500 * time.Millisecond)
 	}
