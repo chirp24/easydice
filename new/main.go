@@ -117,7 +117,7 @@ func angleFromCenter(dice Dice, self *room.Entity, layout string) float64 {
 		// Rotate 180 degrees
 		return math.Atan2(-dy, -dx)
 	case "left":
-		// Rotate 90 degrees counterclockwise
+		// No rotation needed
 		return math.Atan2(dy, dx)
 	case "right":
 		// Rotate 90 degrees clockwise
