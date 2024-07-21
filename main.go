@@ -88,6 +88,10 @@ func handleChat(e *g.Intercept) {
 		e.Block()
 		log.Println(msg)
 		go rollDice()
+	} else if strings.Contains(msg, ":tri") { // :tri msg
+		e.Block()
+		log.Println(msg)
+		go rollTriangle()
 	}
 }
 
@@ -171,6 +175,38 @@ func rollDice() {
 	defer diceIDMutex.Unlock()
 
 	for _, dice := range diceIDs {
+		log.Printf("Sending THROW_DICE for ID: %s (X: %d, Y: %d)", dice.ID, dice.X, dice.Y)
+		ext.Send(out.THROW_DICE, []byte(dice.ID))
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+func rollTriangle() {
+	diceIDMutex.Lock()
+	defer diceIDMutex.Unlock()
+
+	if len(diceIDs) < 3 {
+		log.Println("Not enough dice to roll in triangle")
+		return
+	}
+
+	// Select every other die (1st, 3rd, and 5th in the sorted list)
+	triangleDice := []Dice{}
+	for i, dice := range diceIDs {
+		if i%2 == 0 { // Every other die
+			triangleDice = append(triangleDice, dice)
+		}
+		if len(triangleDice) == 3 {
+			break
+		}
+	}
+
+	if len(triangleDice) < 3 {
+		log.Println("Not enough dice to roll in a triangle")
+		return
+	}
+
+	for _, dice := range triangleDice {
 		log.Printf("Sending THROW_DICE for ID: %s (X: %d, Y: %d)", dice.ID, dice.X, dice.Y)
 		ext.Send(out.THROW_DICE, []byte(dice.ID))
 		time.Sleep(500 * time.Millisecond)
