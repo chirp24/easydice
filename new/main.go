@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -130,13 +131,13 @@ func collectDice() {
 
 	switch layout {
 	case "bottom":
-		sortDiceBottom(diceList)
+		sortDice(diceList, self)
 	case "top":
-		sortDiceTop(diceList)
+		sortDice(diceList, self)
 	case "left":
-		sortDiceLeft(diceList)
+		sortDice(diceList, self)
 	case "right":
-		sortDiceRight(diceList)
+		sortDice(diceList, self)
 	default:
 		log.Println("Unknown layout detected.")
 		return
@@ -213,40 +214,16 @@ func detectLayout(diceList []Dice, self *room.Entity) string {
 	return "unknown"
 }
 
-func sortDiceBottom(diceList []Dice) {
+func sortDice(diceList []Dice, self *room.Entity) {
 	sort.Slice(diceList, func(i, j int) bool {
-		if diceList[i].Y != diceList[j].Y {
-			return diceList[i].Y > diceList[j].Y
-		}
-		return diceList[i].X < diceList[j].X
+		return angleFromCenter(diceList[i], self) < angleFromCenter(diceList[j], self)
 	})
 }
 
-func sortDiceTop(diceList []Dice) {
-	sort.Slice(diceList, func(i, j int) bool {
-		if diceList[i].Y != diceList[j].Y {
-			return diceList[i].Y < diceList[j].Y
-		}
-		return diceList[i].X < diceList[j].X
-	})
-}
-
-func sortDiceLeft(diceList []Dice) {
-	sort.Slice(diceList, func(i, j int) bool {
-		if diceList[i].X != diceList[j].X {
-			return diceList[i].X < diceList[j].X
-		}
-		return diceList[i].Y > diceList[j].Y
-	})
-}
-
-func sortDiceRight(diceList []Dice) {
-	sort.Slice(diceList, func(i, j int) bool {
-		if diceList[i].X != diceList[j].X {
-			return diceList[i].X > diceList[j].X
-		}
-		return diceList[i].Y > diceList[j].Y
-	})
+func angleFromCenter(dice Dice, self *room.Entity) float64 {
+	dx := float64(dice.X - self.X)
+	dy := float64(dice.Y - self.Y)
+	return math.Atan2(dy, dx)
 }
 
 func closeDice() {
