@@ -105,63 +105,33 @@ func filterDice(roomMgr *room.Manager, self *room.Entity) []room.Object {
 	return dice
 }
 
-func collectDice() {
-	self := roomMgr.EntityByName(profileMgr.Name)
-	if self == nil {
-		log.Println("self not found.")
-		return
-	}
-
-	log.Println("Starting dice collection")
-
-	dice := filterDice(roomMgr, self)
-	log.Println("Filtered dice:", dice)
-
-	var diceList []Dice
-	for _, die := range dice {
-		diceList = append(diceList, Dice{ID: die.Id, X: die.X, Y: die.Y})
-	}
-
-	layout := detectLayout(diceList, self)
-	log.Printf("Detected layout: %s", layout)
-	if layout == "unknown" {
-		go showMsg("Unknown dice layout.")
-		return
-	}
+func angleFromCenter(dice Dice, self *room.Entity, layout string) float64 {
+	dx := float64(dice.X - self.X)
+	dy := float64(dice.Y - self.Y)
 
 	switch layout {
 	case "bottom":
-		sortDice(diceList, self)
+		// No rotation needed
+		return math.Atan2(dy, dx)
 	case "top":
-		sortDice(diceList, self)
+		// Rotate 180 degrees
+		return math.Atan2(-dy, -dx)
 	case "left":
-		sortDice(diceList, self)
+		// Rotate 90 degrees counterclockwise
+		return math.Atan2(dy, dx)
 	case "right":
-		sortDice(diceList, self)
+		// Rotate 90 degrees clockwise
+		return math.Atan2(-dx, dy)
 	default:
-		log.Println("Unknown layout detected.")
-		return
+		// Default to no rotation
+		return math.Atan2(dy, dx)
 	}
+}
 
-	diceIDMutex.Lock()
-	defer diceIDMutex.Unlock()
-
-	if setup {
-		diceIDs = nil
-		for _, die := range diceList {
-			if len(diceIDs) < 5 {
-				diceIDs = append(diceIDs, die)
-				log.Printf("Collected dice ID: %s (X: %d, Y: %d)", die.ID, die.X, die.Y)
-				if len(diceIDs) == 5 {
-					setupMutex.Lock()
-					setup = false
-					setupMutex.Unlock()
-					go showMsg("Setup mode disabled. 5 dice IDs collected.")
-					break
-				}
-			}
-		}
-	}
+func sortDice(diceList []Dice, self *room.Entity, layout string) {
+	sort.Slice(diceList, func(i, j int) bool {
+		return angleFromCenter(diceList[i], self, layout) < angleFromCenter(diceList[j], self, layout)
+	})
 }
 
 func detectLayout(diceList []Dice, self *room.Entity) string {
@@ -214,16 +184,79 @@ func detectLayout(diceList []Dice, self *room.Entity) string {
 	return "unknown"
 }
 
-func sortDice(diceList []Dice, self *room.Entity) {
-	sort.Slice(diceList, func(i, j int) bool {
-		return angleFromCenter(diceList[i], self) < angleFromCenter(diceList[j], self)
-	})
+func sortDiceBottom(diceList []Dice, self *room.Entity) {
+	sortDice(diceList, self, "bottom")
 }
 
-func angleFromCenter(dice Dice, self *room.Entity) float64 {
-	dx := float64(dice.X - self.X)
-	dy := float64(dice.Y - self.Y)
-	return math.Atan2(dy, dx)
+func sortDiceTop(diceList []Dice, self *room.Entity) {
+	sortDice(diceList, self, "top")
+}
+
+func sortDiceLeft(diceList []Dice, self *room.Entity) {
+	sortDice(diceList, self, "left")
+}
+
+func sortDiceRight(diceList []Dice, self *room.Entity) {
+	sortDice(diceList, self, "right")
+}
+
+func collectDice() {
+	self := roomMgr.EntityByName(profileMgr.Name)
+	if self == nil {
+		log.Println("self not found.")
+		return
+	}
+
+	log.Println("Starting dice collection")
+
+	dice := filterDice(roomMgr, self)
+	log.Println("Filtered dice:", dice)
+
+	var diceList []Dice
+	for _, die := range dice {
+		diceList = append(diceList, Dice{ID: die.Id, X: die.X, Y: die.Y})
+	}
+
+	layout := detectLayout(diceList, self)
+	log.Printf("Detected layout: %s", layout)
+	if layout == "unknown" {
+		go showMsg("Unknown dice layout.")
+		return
+	}
+
+	switch layout {
+	case "bottom":
+		sortDiceBottom(diceList, self)
+	case "top":
+		sortDiceTop(diceList, self)
+	case "left":
+		sortDiceLeft(diceList, self)
+	case "right":
+		sortDiceRight(diceList, self)
+	default:
+		log.Println("Unknown layout detected.")
+		return
+	}
+
+	diceIDMutex.Lock()
+	defer diceIDMutex.Unlock()
+
+	if setup {
+		diceIDs = nil
+		for _, die := range diceList {
+			if len(diceIDs) < 5 {
+				diceIDs = append(diceIDs, die)
+				log.Printf("Collected dice ID: %s (X: %d, Y: %d)", die.ID, die.X, die.Y)
+				if len(diceIDs) == 5 {
+					setupMutex.Lock()
+					setup = false
+					setupMutex.Unlock()
+					go showMsg("Setup mode disabled. 5 dice IDs collected.")
+					break
+				}
+			}
+		}
+	}
 }
 
 func closeDice() {
