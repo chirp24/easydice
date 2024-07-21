@@ -10,4 +10,4 @@ You may also use the command ```:tri``` to roll 3 dice in a triangle instead of 
 
 The extension is limited to sending packets every 500ms.
 
-![](https://github.com/chirp24/easydice/blob/main/dicescript1.gif)
+![](https://github.com/chirp24/easydice/blob/main/dicescript.gif)
